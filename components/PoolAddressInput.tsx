@@ -20,7 +20,7 @@ export function PoolAddressInput({ value, onChange }: PoolAddressInputProps) {
 
   return (
     <div className="group">
-      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 transition-colors">
+      <label className="block text-sm font-medium text-gray-700 mb-2">
         Pool Address
       </label>
       <div className="relative">

@@ -3,8 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MarketHeader } from "./MarketHeader";
 import { OrderbookTable } from "./OrderbookTable";
-import { ChainSelect } from "./ChainSelect";
-import { PoolAddressInput } from "./PoolAddressInput";
 import { RefreshBadge } from "./RefreshBadge";
 import { ErrorAlert } from "./ErrorAlert";
 import { LoadingOrderbook } from "./LoadingOrderbook";
@@ -64,7 +62,7 @@ export function OrderbookPage({
 
     setLoading(true);
     setError(null);
-    setCanFetch(false); // ✅ Disable fetch button
+    setCanFetch(false);
 
     try {
       const url = skipCache 
@@ -84,7 +82,7 @@ export function OrderbookPage({
     } catch (err: any) {
       setError(err.message);
       setData(null);
-      setCanFetch(true); // ✅ Re-enable on error
+      setCanFetch(true);
     } finally {
       setLoading(false);
     }
@@ -96,6 +94,7 @@ export function OrderbookPage({
       fetchOrderbook(mode, false);
     }
     shouldAutoFetch.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   const handleFetch = () => {
@@ -140,9 +139,37 @@ export function OrderbookPage({
 
         <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-            <ChainSelect value={chain} onChange={handleChainChange} />
-            <PoolAddressInput value={pool} onChange={handlePoolChange} />
-            
+            {/* Chain Select - ✅ ONLY 3 CHAINS */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Chain
+              </label>
+              <select
+                value={chain}
+                onChange={(e) => handleChainChange(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer h-[48px]"
+              >
+                <option value="ethereum">Ethereum</option>
+                <option value="base">Base</option>
+                <option value="arbitrum">Arbitrum</option>
+              </select>
+            </div>
+
+            {/* Pool Address Input */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pool Address
+              </label>
+              <input
+                type="text"
+                value={pool}
+                onChange={(e) => handlePoolChange(e.target.value)}
+                placeholder="Enter Uniswap V3 pool contract address"
+                className="w-full px-4 py-3 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 h-[48px]"
+              />
+            </div>
+
+            {/* Mode Select */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Mode
@@ -150,7 +177,7 @@ export function OrderbookPage({
               <select
                 value={mode}
                 onChange={(e) => handleModeChange(e.target.value as "simple" | "advanced")}
-                className="w-full px-4 py-3 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                className="w-full px-4 py-3 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer h-[48px]"
                 disabled={loading}
               >
                 <option value="simple">Simple</option>
@@ -158,11 +185,15 @@ export function OrderbookPage({
               </select>
             </div>
 
-            <div className="flex items-end">
+            {/* Fetch Button */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2 opacity-0">
+                Action
+              </label>
               <button
                 onClick={handleFetch}
                 disabled={!pool || loading || !canFetch}
-                className="w-full bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                className="w-full bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors h-[48px]"
               >
                 {loading ? "Loading..." : "Fetch Orderbook"}
               </button>
@@ -198,6 +229,8 @@ export function OrderbookPage({
                 onCooldownComplete={() => setCanFetch(true)}
                 loading={loading}
                 mode={mode}
+                chain={chain}
+                pool={pool}
               />
             </div>
 
