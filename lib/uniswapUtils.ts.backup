@@ -1,0 +1,118 @@
+import { ethers } from 'ethers'
+import { CHAINS, UNISWAP_V3_POOL_ABI, ERC20_ABI, TICK_SPACING } from './constants'
+import { PoolState, OrderbookData, BidAskLevel } from './types'
+
+export class UniswapV3OrderbookService {
+  private provider: ethers.JsonRpcProvider
+  private poolContract: ethers.Contract
+
+  constructor(chainName: string, poolAddress: string) {
+    const chain = CHAINS[chainName.toUpperCase() as keyof typeof CHAINS]
+    if (!chain) throw new Error(`Unsupported chain: ${chainName}`)
+
+    this.provider = new ethers.JsonRpcProvider(chain.rpcUrl)
+    this.poolContract = new ethers.Contract(poolAddress, UNISWAP_V3_POOL_ABI, this.provider)
+  }
+
+  async getPoolState(): Promise<PoolState> {
+    const [slot0, liquidity, token0, token1, fee] = await Promise.all([
+      this.poolContract.slot0(),
+      this.poolContract.liquidity(),
+      this.poolContract.token0(),
+      this.poolContract.token1(),
+      this.poolContract.fee(),
+    ])
+
+    return {
+      sqrtPriceX96: slot0.sqrtPriceX96,
+      tick: slot0.tick,
+      liquidity: liquidity,
+      token0,
+      token1,
+      fee: Number(fee),
+    }
+  }
+
+  async getTokenInfo(tokenAddress: string) {
+    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider)
+    const [symbol, decimals] = await Promise.all([
+      tokenContract.symbol(),
+      tokenContract.decimals(),
+    ])
+    return { symbol, decimals }
+  }
+
+  tickToPrice(tick: number, token0Decimals: number, token1Decimals: number): number {
+    const price = Math.pow(1.0001, tick)
+    const decimalAdjustment = Math.pow(10, token0Decimals - token1Decimals)
+    return price * decimalAdjustment
+  }
+
+  async generateOrderbook(mode: string): Promise<OrderbookData> {
+    const poolState = await this.getPoolState()
+    const [token0Info, token1Info] = await Promise.all([
+      this.getTokenInfo(poolState.token0),
+      this.getTokenInfo(poolState.token1),
+    ])
+
+    const Q96 = 2n ** 96n
+    const sqrtPrice = Number(poolState.sqrtPriceX96) / Number(Q96)
+    const currentPrice = Math.pow(sqrtPrice, 2) * Math.pow(10, token0Info.decimals - token1Info.decimals)
+
+    const levels = mode.includes('(') ? parseInt(mode.match(/\((\d+)/)?.[1] || '5') : 5
+
+    const tickSpacing = TICK_SPACING[poolState.fee] || 60
+    const bids: BidAskLevel[] = []
+    const asks: BidAskLevel[] = []
+
+    for (let i = 1; i <= levels; i++) {
+      const tickIndex = poolState.tick - (i * tickSpacing)
+      const price = this.tickToPrice(tickIndex, token0Info.decimals, token1Info.decimals)
+      const liquidityAmount = Number(poolState.liquidity) / Math.pow(10, 18) / levels
+
+      bids.push({
+        price: price.toFixed(10),
+        amount: liquidityAmount.toFixed(2) + 'M',
+        total: '$' + (price * liquidityAmount).toFixed(10),
+        tickIndex,
+      })
+    }
+
+    for (let i = 1; i <= levels; i++) {
+      const tickIndex = poolState.tick + (i * tickSpacing)
+      const price = this.tickToPrice(tickIndex, token0Info.decimals, token1Info.decimals)
+      const liquidityAmount = Number(poolState.liquidity) / Math.pow(10, 18) / levels
+
+      asks.push({
+        price: price.toFixed(10),
+        amount: liquidityAmount.toFixed(2) + 'M',
+        total: '$' + (price * liquidityAmount).toFixed(10),
+        tickIndex,
+      })
+    }
+
+    const tvl = Number(poolState.liquidity) / Math.pow(10, 18) * currentPrice
+
+    return {
+      pair: `${token0Info.symbol}/${token1Info.symbol}`,
+      currentPrice,
+      priceInverse: 1 / currentPrice,
+      quoteToken: token1Info.symbol,
+      tvl,
+      chain: 'Ethereum',
+      token0: {
+        symbol: token0Info.symbol,
+        price: 0,
+        reserve: (Number(poolState.liquidity) / Math.pow(10, token0Info.decimals)).toFixed(2) + 'M',
+      },
+      token1: {
+        symbol: token1Info.symbol,
+        price: currentPrice,
+        reserve: (Number(poolState.liquidity) / Math.pow(10, token1Info.decimals)).toFixed(2),
+      },
+      currentTick: poolState.tick,
+      bids: bids.reverse(),
+      asks,
+    }
+  }
+}
