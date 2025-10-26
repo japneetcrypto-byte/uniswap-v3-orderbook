@@ -25,16 +25,13 @@ const ERC20_ABI = [
   'function balanceOf(address) view returns (uint256)',
 ];
 
-// ✅ CORRECTED Helper function to format very small prices with subscript notation
 function formatSmallPrice(price: number): string {
   if (price === 0) return '0.00000000';
   
-  // For normal prices (>= 0.0001), use standard decimal formatting
   if (price >= 0.0001) {
     return price.toFixed(8).replace(/\.?0+$/, '');
   }
   
-  // For very small numbers, use subscript notation
   const priceStr = price.toExponential().toLowerCase();
   const match = priceStr.match(/^([0-9.]+)e(-?\d+)$/);
   
@@ -44,15 +41,12 @@ function formatSmallPrice(price: number): string {
   const exponent = parseInt(match[2]);
   
   if (exponent >= -3) {
-    // Not small enough for subscript, use regular decimal
     return price.toFixed(Math.abs(exponent) + 4);
   }
   
-  // Extract significant digits from mantissa
   const mantissaStr = mantissa.toFixed(4).replace('.', '');
   const significantDigits = mantissaStr.replace(/^0+/, '');
   
-  // Create subscript for number of leading zeros
   const subscriptMap: { [key: string]: string } = {
     '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
     '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉'
@@ -80,8 +74,14 @@ async function getDexScreenerData(chainId: string, poolAddress: string) {
     
     if (data.pair) {
       return {
-        baseToken: data.pair.baseToken,
-        quoteToken: data.pair.quoteToken,
+        baseToken: {
+          address: data.pair.baseToken.address,
+          symbol: data.pair.baseToken.symbol,
+        },
+        quoteToken: {
+          address: data.pair.quoteToken.address,
+          symbol: data.pair.quoteToken.symbol,
+        },
         priceUsd: parseFloat(data.pair.priceUsd || '0'),
         volume24h: parseFloat(data.pair.volume?.h24 || '0'),
       };
@@ -93,7 +93,66 @@ async function getDexScreenerData(chainId: string, poolAddress: string) {
   }
 }
 
-async function getTokenPrice(symbol: string): Promise<number> {
+// ✅ CORRECTED: Fetch quote token price using known stablecoin pairs
+async function getQuoteTokenPrice(
+  quoteSymbol: string, 
+  quoteAddress: string, 
+  chain: string
+): Promise<number> {
+  try {
+    // For stablecoins, always return $1
+    const stablecoins = ['USDC', 'USDT', 'DAI', 'USDBC', 'USDC.E', 'FDUSD'];
+    if (stablecoins.includes(quoteSymbol.toUpperCase())) {
+      console.log(`💰 Quote token (${quoteSymbol}) is stablecoin: $1.00`);
+      return 1;
+    }
+
+    const chainMap: Record<string, string> = { 
+      ethereum: 'ethereum', 
+      base: 'base', 
+      arbitrum: 'arbitrum' 
+    };
+    const chainName = chainMap[chain.toLowerCase()] || 'ethereum';
+    
+    // Fetch token price from DexScreener (standalone)
+    const response = await fetch(
+      `https://api.dexscreener.com/latest/dex/search?q=${quoteAddress}`
+    );
+    const data = await response.json();
+    
+    if (data.pairs && data.pairs.length > 0) {
+      // Filter pairs on the correct chain with USD quotes
+      const validPairs = data.pairs
+        .filter((p: any) => 
+          p.chainId === chainName && 
+          (p.quoteToken?.symbol === 'WETH' || 
+           p.quoteToken?.symbol === 'USDC' || 
+           p.quoteToken?.symbol === 'USDT')
+        )
+        .sort((a: any, b: any) => 
+          parseFloat(b.liquidity?.usd || '0') - parseFloat(a.liquidity?.usd || '0')
+        );
+      
+      if (validPairs.length > 0 && validPairs[0].priceUsd) {
+        const price = parseFloat(validPairs[0].priceUsd);
+        if (price > 0) {
+          console.log(`💰 Quote token (${quoteSymbol}) price from DexScreener: $${price}`);
+          return price;
+        }
+      }
+    }
+    
+    console.log(`⚠️  DexScreener failed for ${quoteSymbol}, using fallback`);
+    return getFallbackPrice(quoteSymbol);
+    
+  } catch (error) {
+    console.error(`DexScreener quote price error for ${quoteSymbol}:`, error);
+    return getFallbackPrice(quoteSymbol);
+  }
+}
+
+// ✅ Fallback prices
+function getFallbackPrice(symbol: string): number {
   const priceMap: Record<string, number> = {
     'WETH': 3800,
     'ETH': 3800,
@@ -105,7 +164,7 @@ async function getTokenPrice(symbol: string): Promise<number> {
     'CBETH': 4000,
     'ONDO': 0.75,
   };
-  return priceMap[symbol.toUpperCase()] || 0;
+  return priceMap[symbol.toUpperCase()] || 1;
 }
 
 function getLiquidityAtTickLevel(
@@ -198,9 +257,11 @@ export async function GET(request: NextRequest) {
     
     const baseSymbol = baseIsToken0 ? symbol0 : symbol1;
     const quoteSymbol = baseIsToken0 ? symbol1 : symbol0;
+    const quoteAddress = baseIsToken0 ? token1Address : token0Address;
     
-    let basePriceUSD = dexData?.priceUsd || await getTokenPrice(baseSymbol);
-    let quotePriceUSD = await getTokenPrice(quoteSymbol);
+    let basePriceUSD = dexData?.priceUsd || getFallbackPrice(baseSymbol);
+    // ✅ UPDATED: Fetch live quote price from DexScreener with stablecoin detection
+    let quotePriceUSD = await getQuoteTokenPrice(quoteSymbol, quoteAddress, chain);
 
     const currentTick = Number(slot0Data[1]);
     const currentPrice = 1.0001 ** currentTick;
@@ -325,7 +386,6 @@ export async function GET(request: NextRequest) {
     console.log(`🔧 Using ${bidTicksSource.length} ticks for bids (${baseIsToken0 ? 'ticksBelow' : 'ticksAbove'})`);
     console.log(`🔧 Using ${askTicksSource.length} ticks for asks (${baseIsToken0 ? 'ticksAbove' : 'ticksBelow'})`);
     
-    // ✅ Build all levels first, then sort by price
     const allLevels: any[] = [];
     const maxQuoteReserve = baseIsToken0 ? reserve1 : reserve0;
     const maxBaseReserve = baseIsToken0 ? reserve0 : reserve1;
@@ -430,7 +490,6 @@ export async function GET(request: NextRequest) {
 
     console.log(`📊 Total levels collected: ${allLevels.length}`);
 
-    // ✅ UNIVERSAL SORTING: Split by current price, then sort each side
     const bidsRaw = allLevels
       .filter(level => level.price < basePriceUSD)
       .sort((a, b) => b.price - a.price);
