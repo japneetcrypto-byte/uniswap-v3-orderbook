@@ -556,35 +556,39 @@ export async function GET(request: NextRequest) {
 
     console.log(`✅ Final: ${bids.length} bids (depth: $${runningBidTotalUSD.toFixed(2)}), ${asks.length} asks (depth: $${runningAskTotalUSD.toFixed(2)})`);
 
-    const result = {
-      chain,
-      chainId: chain === 'ethereum' ? 1 : chain === 'base' ? 8453 : 42161,
-      pool,
-      symbol0: baseSymbol,
-      symbol1: quoteSymbol,
-      decimals0: baseIsToken0 ? Number(decimals0) : Number(decimals1),
-      decimals1: baseIsToken0 ? Number(decimals1) : Number(decimals0),
-      quoteToken: quoteSymbol,
-      currentTick,
-      activeLiquidity: tvl,
-      prices: {
-        token0USD: basePriceUSD,
-        token1USD: quotePriceUSD,
-        currentPriceUSD: basePriceUSD,
-        currentPriceFormatted: formatSmallPrice(basePriceUSD),
-      },
-      reserves: {
-        token0: baseIsToken0 ? reserve0 : reserve1,
-        token1: baseIsToken0 ? reserve1 : reserve0,
-      },
-      bids,
-      asks,
-      mode,
-      ...(warningMessage && { warningMessage }),
-      ...(scannedRange && { scannedRange }),
-      timestamp: new Date().toISOString(),
-      cached: false,
+    // ✅ NEW CODE (Vercel-compatible)
+    const result: any = {
+    chain,
+    chainId: chain === 'ethereum' ? 1 : chain === 'base' ? 8453 : 42161,
+    pool,
+    symbol0: baseSymbol,
+    symbol1: quoteSymbol,
+    decimals0: baseIsToken0 ? Number(decimals0) : Number(decimals1),
+    decimals1: baseIsToken0 ? Number(decimals1) : Number(decimals0),
+    quoteToken: quoteSymbol,
+    currentTick,
+    activeLiquidity: tvl,
+    prices: {
+    token0USD: basePriceUSD,
+    token1USD: quotePriceUSD,
+    currentPriceUSD: basePriceUSD,
+    currentPriceFormatted: formatSmallPrice(basePriceUSD),
+    },
+    reserves: {
+    token0: baseIsToken0 ? reserve0 : reserve1,
+    token1: baseIsToken0 ? reserve1 : reserve0,
+    },
+    bids,
+    asks,
+    mode,
+    timestamp: new Date().toISOString(),
+    cached: false,
     };
+
+// Add optional fields only if they exist
+if (warningMessage) result.warningMessage = warningMessage;
+if (scannedRange) result.scannedRange = scannedRange;
+
 
     await setCache(cacheKey, result, cacheTTL);
     return NextResponse.json(result);
