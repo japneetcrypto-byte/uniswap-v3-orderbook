@@ -203,7 +203,7 @@ export function OrderbookPage({
           {error && <ErrorAlert message={error} />}
         </div>
 
-        {loading && <LoadingOrderbook />}
+        {loading && <LoadingOrderbook mode={mode} />}
 
         {!loading && data && (
           <>
