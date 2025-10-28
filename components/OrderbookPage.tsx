@@ -211,15 +211,12 @@ export function OrderbookPage({
               symbol0={data.symbol0}
               symbol1={data.symbol1}
               chain={data.chain}
-              currentPrice={data.prices.currentPriceUSD}
               currentTick={data.currentTick}
               activeLiquidity={data.activeLiquidity}
               quoteToken={data.quoteToken}
               prices={data.prices}
               reserves={data.reserves}
               pool={data.pool}
-              warningMessage={data.warningMessage}
-              scannedRange={data.scannedRange}
             />
 
             <div className="bg-white rounded-lg shadow-lg p-6 mb-4">
@@ -229,8 +226,6 @@ export function OrderbookPage({
                 onCooldownComplete={() => setCanFetch(true)}
                 loading={loading}
                 mode={mode}
-                chain={chain}
-                pool={pool}
               />
             </div>
 
