@@ -585,10 +585,9 @@ export async function GET(request: NextRequest) {
     cached: false,
     };
 
-// Add optional fields only if they exist
-if (warningMessage) result.warningMessage = warningMessage;
-if (scannedRange) result.scannedRange = scannedRange;
-
+    // Add optional fields only if they exist
+    if (warningMessage) result.warningMessage = warningMessage;
+    if (scannedRange) result.scannedRange = scannedRange; 
 
     await setCache(cacheKey, result, cacheTTL);
     return NextResponse.json(result);
